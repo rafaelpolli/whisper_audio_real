@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-Time Speech to Text</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.5.4/socket.io.js"></script>
+    <script src="https://cdn.webrtc-experiment.com/RecordRTC.js"></script>
+</head>
+<body>
+    <h1>Real-Time Speech to Text</h1>
+    <button id="start">Start Recording</button>
+    <button id="stop" disabled>Stop Recording</button>
+    <p><strong>Transcription:</strong> <span id="transcription"></span></p>
+
+    <script>
+        let socket = io.connect('http://localhost:5001');
+        let recorder;
+        let audioStream;
+        
+        document.getElementById("start").onclick = async () => {
+            audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            recorder = RecordRTC(audioStream, {
+                type: 'audio',
+                mimeType: 'audio/wav',
+                recorderType: StereoAudioRecorder,
+                desiredSampRate: 16000,
+                numberOfAudioChannels: 1,
+                timeSlice: 1000, // Send chunks every second
+                ondataavailable: (blob) => {
+                    let reader = new FileReader();
+                    reader.readAsDataURL(blob);
+                    reader.onloadend = () => {
+                        let base64data = reader.result.split(',')[1];
+                        socket.emit('audio_chunk', base64data);
+                    };
+                }
+            });
+            recorder.startRecording();
+            
+            document.getElementById("start").disabled = true;
+            document.getElementById("stop").disabled = false;
+        };
+
+        document.getElementById("stop").onclick = () => {
+            recorder.stopRecording(() => {
+                recorder.destroy();
+                recorder = null;
+                audioStream.getTracks().forEach(track => track.stop());
+            });
+            document.getElementById("start").disabled = false;
+            document.getElementById("stop").disabled = true;
+        };
+
+        socket.on('transcription', function(data) {
+            document.getElementById("transcription").innerText = data.text;
+        });
+    </script>
+</body>
+</html>
